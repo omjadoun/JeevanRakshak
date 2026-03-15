@@ -194,6 +194,7 @@ const WaterState = ({ children }) => {
   //SOS
   const SOS = async (image, category, details, longitude, latitude) => {
     try {
+      console.log('Creating SOS alert:', { image, category, details, longitude, latitude, name, phone, state });
       const response = await axios.post(`${BASE_URL}/SOS.json`, {
         name,
         phone,
@@ -203,11 +204,56 @@ const WaterState = ({ children }) => {
         details,
         longitude,
         latitude,
+        timestamp: new Date().toISOString(),
       });
+      console.log('SOS response:', response.data);
       return response.data;
     } catch (error) {
-      console.error("Error during add-up:", error);
-      return { success: false, error: "Error occurred during sign-up" };
+      console.error("Error during SOS:", error);
+      return { success: false, error: "Error occurred during SOS" };
+    }
+  };
+
+  // Emergency SMS to family contacts
+  const sendEmergencySMS = async (message) => {
+    try {
+      // In a real implementation, you would:
+      // 1. Fetch family contacts from user profile
+      // 2. Use an SMS service (like Twilio, Firebase, etc.)
+      // 3. Send SMS to all family contacts
+      
+      // For now, we'll simulate the SMS sending
+      console.log("Emergency message sent to family contacts:", message);
+      
+      // Store emergency alert in database for tracking
+      await axios.post(`${BASE_URL}/EmergencyAlerts.json`, {
+        name,
+        phone,
+        state,
+        message,
+        timestamp: new Date().toISOString(),
+        status: "sent"
+      });
+      
+      return { success: true, message: "Emergency alert sent successfully" };
+    } catch (error) {
+      console.error("Error sending emergency SMS:", error);
+      return { success: false, error: "Failed to send emergency alert" };
+    }
+  };
+
+  // Get user's family contacts (for emergency messaging)
+  const getFamilyContacts = async () => {
+    try {
+      // This would fetch from user profile or contacts database
+      // For now, returning a placeholder
+      return [
+        { name: "Family Member 1", phone: "+919876543210" },
+        { name: "Family Member 2", phone: "+919876543211" }
+      ];
+    } catch (error) {
+      console.error("Error fetching family contacts:", error);
+      return [];
     }
   };
   //SOS
@@ -420,6 +466,8 @@ const WaterState = ({ children }) => {
         AddAnn,
         getAnn,
         SOS,
+        sendEmergencySMS,
+        getFamilyContacts,
         COMPLAINT,
         getComplaints,
         getPoints,

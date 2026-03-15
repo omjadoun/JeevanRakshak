@@ -1,0 +1,66 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text',
+    'Segoe UI', sans-serif;
+  --color-background: #020617;
+  --color-surface: #020617;
+  --color-surface-elevated: #020617;
+  --color-border-subtle: #1e293b;
+  --color-border-strong: #38bdf8;
+  --color-text-subtle: #64748b;
+  --color-text-main: #e5e7eb;
+  --color-accent: #38bdf8;
+  --color-accent-soft: rgba(56, 189, 248, 0.16);
+  --shadow-soft:
+    0 22px 65px rgba(15, 23, 42, 0.9),
+    0 0 0 1px rgba(148, 163, 184, 0.15);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    background: radial-gradient(circle at top, #020617 0, #020617 40%, #020617 100%);
+    color: var(--color-text-main);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #root {
+    display: flex;
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply bg-slate-900/70 border border-slate-800/80 backdrop-blur-xl rounded-2xl shadow-[0_24px_80px_rgba(15,23,42,0.9)] transition-all duration-300;
+  }
+
+  .glass-panel-hover {
+    @apply hover:border-cyan-400/60 hover:shadow-[0_28px_90px_rgba(8,47,73,0.9)] hover:-translate-y-0.5;
+  }
+
+  .nav-pill {
+    @apply flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium text-slate-300/80 hover:text-cyan-100 transition-colors duration-200;
+  }
+
+  .nav-pill-active {
+    @apply bg-cyan-500/15 text-cyan-100 border border-cyan-400/60 shadow-[0_0_0_1px_rgba(8,47,73,0.8)];
+  }
+
+  .badge-soft {
+    @apply inline-flex items-center gap-1 rounded-full border border-cyan-400/30 bg-cyan-500/10 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-cyan-100;
+  }
+
+  .chip-muted {
+    @apply inline-flex items-center gap-1 rounded-full bg-slate-800/80 px-2.5 py-0.5 text-xs text-slate-300/80 border border-slate-700/60;
+  }
+}
+
