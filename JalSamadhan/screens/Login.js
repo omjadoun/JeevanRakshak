@@ -4,73 +4,104 @@ import { Ionicons } from "@expo/vector-icons";
 import Context from "../ContextAPI";
 import Button from "../components/common/Button";
 import Input from "../components/common/Input";
-import { COLORS, SIZES, FONTS, SHADOWS } from "../constants/Theme";
+import { COLORS, SIZES, FONTS } from "../constants/Theme";
 
 function Login({ navigation }) {
   const context = useContext(Context);
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [phoneError, setPhoneError] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async () => {
+  function onPhoneChange(text) {
+    const digits = text.replace(/\D/g, "").slice(0, 10);
+    setPhoneNumber(digits);
+    if (phoneError) setPhoneError(digits.length === 10 ? null : phoneError);
+  }
+
+  async function handleLogin() {
     if (!phoneNumber || phoneNumber.length !== 10) {
-      Alert.alert("Invalid Input", "Please enter a valid 10-digit phone number");
+      setPhoneError("Please enter a valid 10-digit mobile number.");
       return;
     }
-
+    setPhoneError(null);
     setLoading(true);
+
     try {
       const response = await context.login(phoneNumber);
-      if (Object.keys(response).length !== 0) {
-        context.setadmin(response.admin);
-        context.setname(response.name);
-        context.setstate(response.state);
-        if (response.admin) {
-          navigation.navigate('adminmain');
-        } else {
-          navigation.navigate('NormalUser');
-        }
-      } else {
-        Alert.alert("Invalid", "Use correct credentials or signup!");
+
+      if (!response || Object.keys(response).length === 0) {
+        setPhoneError("No account found for this number. Please sign up first.");
+        return;
       }
-    } catch (error) {
+
+      if (response.error) {
+        Alert.alert("Login Failed", response.error);
+        return;
+      }
+
+      context.setadmin(response.admin);
+      context.setname(response.name);
+      context.setstate(response.state);
+
+      if (response.admin) {
+        navigation.navigate("adminmain");
+      } else {
+        navigation.navigate("NormalUser");
+      }
+    } catch {
       Alert.alert("Error", "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
-      
+
       <View style={styles.header}>
         <Text style={styles.title}>Welcome Back</Text>
-        <Text style={styles.subtitle}>Login with OTP to continue</Text>
+        <Text style={styles.subtitle}>Enter your registered mobile number to log in</Text>
       </View>
 
       <View style={styles.form}>
         <Input
-          label="Phone Number"
-          placeholder="Enter 10-digit phone number"
+          label="Mobile Number"
+          placeholder="Enter 10-digit mobile number"
           value={phoneNumber}
-          onChangeText={setPhoneNumber}
+          onChangeText={onPhoneChange}
+          onBlur={() => {
+            if (phoneNumber && phoneNumber.length !== 10)
+              setPhoneError("Phone number must be exactly 10 digits.");
+          }}
+          error={phoneError}
           keyboardType="numeric"
           maxLength={10}
-          leftIcon={<Ionicons name="phone-portrait" size={20} color={COLORS.textSecondary} />}
+          leftIcon={
+            <Ionicons name="phone-portrait" size={20} color={COLORS.textSecondary} />
+          }
         />
 
         <Button
-          title="Send OTP"
+          title="Log In"
           onPress={handleLogin}
           loading={loading}
           size="large"
           style={styles.loginButton}
+          icon={
+            <Ionicons
+              name="log-in"
+              size={20}
+              color="white"
+              style={{ marginRight: 8 }}
+            />
+          }
         />
 
-        <View style={styles.signupContainer}>
-          <Text style={styles.signupText}>Not a user? </Text>
+        <View style={styles.signupRow}>
+          <Text style={styles.mutedText}>Don't have an account? </Text>
           <Button
-            title="Sign up"
+            title="Sign Up"
             onPress={() => navigation.navigate("Signup")}
             variant="ghost"
             size="small"
@@ -81,7 +112,6 @@ function Login({ navigation }) {
   );
 }
 
-export default Login;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -89,7 +119,7 @@ const styles = StyleSheet.create({
     padding: SIZES.padding,
   },
   header: {
-    alignItems: 'center',
+    alignItems: "center",
     marginTop: SIZES.margin * 4,
     marginBottom: SIZES.margin * 3,
   },
@@ -100,23 +130,26 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     ...FONTS.body2,
-    textAlign: 'center',
+    textAlign: "center",
+    color: COLORS.textSecondary,
   },
   form: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
   loginButton: {
     marginTop: SIZES.margin * 2,
   },
-  signupContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+  signupRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     marginTop: SIZES.margin * 2,
   },
-  signupText: {
+  mutedText: {
     ...FONTS.body2,
     color: COLORS.textSecondary,
   },
 });
+
+export default Login;
