@@ -1,12 +1,38 @@
 import { useState } from "react";
 import Context from "./ContextAPI";
 import axios from "axios";
+
+// ─── Validation helpers (shared between signUp & login) ───────────────────────
+
+function isValidPhone(phone) {
+  return typeof phone === "string" && /^\d{10}$/.test(phone.trim());
+}
+
+function isValidName(name) {
+  return (
+    typeof name === "string" &&
+    name.trim().length >= 2 &&
+    /^[a-zA-Z\s'-]+$/.test(name.trim())
+  );
+}
+
+function isValidState(state, stateList) {
+  return (
+    typeof state === "string" &&
+    state.trim().length > 0 &&
+    stateList.some((s) => s.name === state.trim())
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 const WaterState = ({ children }) => {
   const [name, setname] = useState("");
   const [phone, setphone] = useState("");
   const [state, setstate] = useState("");
   const [admin, setadmin] = useState(false);
   const [authtoken, setauthtoken] = useState(null);
+
   const stateAndUTData = [
     {
       id: "1",
@@ -69,49 +95,144 @@ const WaterState = ({ children }) => {
     { id: "34", name: "Uttar Pradesh", latitude: 26.8467, longitude: 80.9462 },
     { id: "35", name: "Uttarakhand", latitude: 30.0668, longitude: 79.0193 },
   ];
+
   const BASE_URL = "https://jalsamadhan-56704-default-rtdb.firebaseio.com";
 
-  // Authorization
+  // ── Authorization ────────────────────────────────────────────────────────
+
+  /**
+   * Sign up a new user.
+   *
+   * Performs server-side (Data layer) validation before writing to Firebase so
+   * that even a manipulated client call cannot persist an incomplete record.
+   *
+   * Returns:
+   *   { name } on success   ← Firebase push response
+   *   { error: string }     on validation failure
+   */
   const signUp = async (name, phone, state) => {
+    // ── Backend / Data-layer validation ──────────────────────────────────
+    if (!isValidName(name)) {
+      return {
+        success: false,
+        error: "Full name is required and must contain only letters (min 2 characters).",
+      };
+    }
+
+    if (!isValidPhone(phone)) {
+      return {
+        success: false,
+        error: "A valid 10-digit mobile number is required.",
+      };
+    }
+
+    if (!isValidState(state, stateAndUTData)) {
+      return {
+        success: false,
+        error: "Please select a valid Indian state or union territory.",
+      };
+    }
+
+    // ── Duplicate-phone guard ─────────────────────────────────────────────
     try {
-      setname(name);
-      setphone(phone);
-      setstate(state);
+      const existing = await axios.get(`${BASE_URL}/user.json`);
+      if (existing.data) {
+        for (const key in existing.data) {
+          if (existing.data[key].phone === phone.trim()) {
+            return {
+              success: false,
+              error:
+                "This phone number is already registered. Please log in instead.",
+            };
+          }
+        }
+      }
+    } catch (checkErr) {
+      console.warn("Duplicate-phone check failed (non-fatal):", checkErr);
+      // Non-fatal: proceed with the write attempt; Firebase will still store the record.
+    }
+
+    // ── Persist to Firebase ───────────────────────────────────────────────
+    try {
+      const trimmedName  = name.trim();
+      const trimmedPhone = phone.trim();
+      const trimmedState = state.trim();
+
+      setname(trimmedName);
+      setphone(trimmedPhone);
+      setstate(trimmedState);
+
       const response = await axios.post(`${BASE_URL}/user.json`, {
-        name,
-        phone,
-        state,
-        admin,
+        name:  trimmedName,
+        phone: trimmedPhone,
+        state: trimmedState,
+        admin: false,            // new users are never admins
       });
-      return response.data;
+
+      return response.data;     // { name: "-NxXXX..." } on success
     } catch (error) {
       console.error("Error during sign-up:", error);
-      return { success: false, error: "Error occurred during sign-up" };
+      return { success: false, error: "A network error occurred. Please try again." };
     }
   };
 
-  // User Login function
+  // ── Login ────────────────────────────────────────────────────────────────
+
+  /**
+   * Log in an existing user by phone number.
+   *
+   * Returns the matching user object, or {} if not found.
+   */
   const login = async (phone) => {
+    // Basic guard — the Login screen also validates, but belt-and-braces.
+    if (!isValidPhone(phone)) {
+      return { success: false, error: "Enter a valid 10-digit mobile number." };
+    }
+
     try {
-      setphone(phone);
+      setphone(phone.trim());
       const response = await axios.get(`${BASE_URL}/user.json`);
+
       for (let i in response.data) {
-        if (response.data[i].phone === phone) {
+        if (response.data[i].phone === phone.trim()) {
           setname(response.data[i].name);
           setstate(response.data[i].state);
           return response.data[i];
         }
       }
-      return {};
+
+      return {};   // no matching user → caller treats as "not found"
     } catch (error) {
       console.error("Error during login:", error);
-      return { success: false, error: "Error occurred during login" };
+      return { success: false, error: "A network error occurred during login." };
     }
   };
 
-  //AUTHORIZATION
+  // ── Pre-OTP phone check ───────────────────────────────────────────────────
 
-  //Announcement
+  /**
+   * Checks whether a phone number is registered WITHOUT logging the user in.
+   * Used by Login.js before generating and delivering an OTP.
+   *
+   * Returns the user record object if found, or null if not found.
+   * Throws on network error (caller should catch).
+   */
+  const checkUserExists = async (phone) => {
+    if (!isValidPhone(phone)) return null;
+
+    const response = await axios.get(`${BASE_URL}/user.json`);
+    if (!response.data) return null;
+
+    for (const key in response.data) {
+      if (response.data[key].phone === phone.trim()) {
+        return response.data[key]; // found
+      }
+    }
+    return null; // not found
+  };
+
+  // ── Announcement ─────────────────────────────────────────────────────────
+
   const AddAnn = async (title, desc) => {
     try {
       const response = await axios.post(`${BASE_URL}/announcement.json`, {
@@ -124,6 +245,7 @@ const WaterState = ({ children }) => {
       return { success: false, error: "Error occurred during sign-up" };
     }
   };
+
   const getAnn = async () => {
     try {
       const response = await axios.get(`${BASE_URL}/announcement.json`);
@@ -137,9 +259,9 @@ const WaterState = ({ children }) => {
       return { success: false, error: "Error occurred during sign-up" };
     }
   };
-  //aNNOUNCEMENT
 
-  // FORUM
+  // ── Forum ────────────────────────────────────────────────────────────────
+
   const createPost = async (title, name) => {
     try {
       const response = await axios.post(`${BASE_URL}/Forum.json`, {
@@ -170,7 +292,6 @@ const WaterState = ({ children }) => {
           timestamp: response.data[key].timestamp || new Date().toISOString(),
         });
       }
-      // Sort posts strictly by newest first
       return arr.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     } catch (error) {
       console.error("Error fetching posts:", error);
@@ -189,12 +310,11 @@ const WaterState = ({ children }) => {
       return { success: false, error: "Error occurred while upvoting" };
     }
   };
-  // FORUM
 
-  //SOS
+  // ── SOS ──────────────────────────────────────────────────────────────────
+
   const SOS = async (image, category, details, longitude, latitude) => {
     try {
-      console.log('Creating SOS alert:', { image, category, details, longitude, latitude, name, phone, state });
       const response = await axios.post(`${BASE_URL}/SOS.json`, {
         name,
         phone,
@@ -206,7 +326,6 @@ const WaterState = ({ children }) => {
         latitude,
         timestamp: new Date().toISOString(),
       });
-      console.log('SOS response:', response.data);
       return response.data;
     } catch (error) {
       console.error("Error during SOS:", error);
@@ -214,27 +333,16 @@ const WaterState = ({ children }) => {
     }
   };
 
-  // Emergency SMS to family contacts
   const sendEmergencySMS = async (message) => {
     try {
-      // In a real implementation, you would:
-      // 1. Fetch family contacts from user profile
-      // 2. Use an SMS service (like Twilio, Firebase, etc.)
-      // 3. Send SMS to all family contacts
-      
-      // For now, we'll simulate the SMS sending
-      console.log("Emergency message sent to family contacts:", message);
-      
-      // Store emergency alert in database for tracking
       await axios.post(`${BASE_URL}/EmergencyAlerts.json`, {
         name,
         phone,
         state,
         message,
         timestamp: new Date().toISOString(),
-        status: "sent"
+        status: "sent",
       });
-      
       return { success: true, message: "Emergency alert sent successfully" };
     } catch (error) {
       console.error("Error sending emergency SMS:", error);
@@ -242,26 +350,22 @@ const WaterState = ({ children }) => {
     }
   };
 
-  // Get user's family contacts (for emergency messaging)
   const getFamilyContacts = async () => {
     try {
-      // This would fetch from user profile or contacts database
-      // For now, returning a placeholder
       return [
         { name: "Family Member 1", phone: "+919876543210" },
-        { name: "Family Member 2", phone: "+919876543211" }
+        { name: "Family Member 2", phone: "+919876543211" },
       ];
     } catch (error) {
       console.error("Error fetching family contacts:", error);
       return [];
     }
   };
-  //SOS
 
-  //COMPLAINT
+  // ── Complaint ────────────────────────────────────────────────────────────
+
   const COMPLAINT = async (image, details, add) => {
     try {
-      let resolved = false;
       const response = await axios.post(`${BASE_URL}/Complaints.json`, {
         name,
         phone,
@@ -269,7 +373,7 @@ const WaterState = ({ children }) => {
         image,
         details,
         add,
-        resolved,
+        resolved: false,
       });
       return response.data;
     } catch (error) {
@@ -277,6 +381,7 @@ const WaterState = ({ children }) => {
       return { success: false, error: "Error occurred during sign-up" };
     }
   };
+
   const getComplaints = async () => {
     try {
       const response = await axios.get(`${BASE_URL}/Complaints.json`);
@@ -284,7 +389,6 @@ const WaterState = ({ children }) => {
       for (let i in response.data) {
         arr.push(response.data[i]);
       }
-      console.log(arr);
       return arr;
     } catch (error) {
       console.error("Error during add-up:", error);
@@ -292,17 +396,17 @@ const WaterState = ({ children }) => {
     }
   };
 
-  //HEATMAP DATA FETCH
+  // ── Heatmap ──────────────────────────────────────────────────────────────
+
   const getPoints = async () => {
     try {
       const response = await axios.get(`${BASE_URL}/SOS.json`);
       let arr = [];
       for (let i in response.data) {
-        const obj = {
+        arr.push({
           latitude: response.data[i].latitude,
           longitude: response.data[i].longitude,
-        };
-        arr.push(obj);
+        });
       }
       return arr;
     } catch (error) {
@@ -310,21 +414,11 @@ const WaterState = ({ children }) => {
       return { success: false, error: "Error occurred during sign-up" };
     }
   };
-  //HEATMAP DATA FETCH
 
-  //CONTRIBUTOR
-  const AddContri = async (
-    Name,
-    Phone,
-    Address,
-    Category,
-    State,
-    Aadhar,
-    Pan,
-    Doc
-  ) => {
+  // ── Contributor ──────────────────────────────────────────────────────────
+
+  const AddContri = async (Name, Phone, Address, Category, State, Aadhar, Pan, Doc) => {
     try {
-      let verified = 0;
       const response = await axios.post(`${BASE_URL}/Contributor.json`, {
         Name,
         Phone,
@@ -334,7 +428,7 @@ const WaterState = ({ children }) => {
         Aadhar,
         Pan,
         Doc,
-        verified,
+        verified: 0,
       });
       return response.data;
     } catch (error) {
@@ -342,12 +436,13 @@ const WaterState = ({ children }) => {
       return { success: false, error: "Error occurred during sign-up" };
     }
   };
+
   const getContris = async () => {
     try {
       const response = await axios.get(`${BASE_URL}/Contributor.json`);
       let arr = [];
       for (let i in response.data) {
-        const obj = {
+        arr.push({
           Id: i,
           Name: response.data[i].Name,
           Phone: response.data[i].Phone,
@@ -357,8 +452,7 @@ const WaterState = ({ children }) => {
           Aadhar: response.data[i].Aadhar,
           Pan: response.data[i].Pan,
           verified: response.data[i].verified,
-        };
-        arr.push(obj);
+        });
       }
       return arr;
     } catch (error) {
@@ -366,12 +460,11 @@ const WaterState = ({ children }) => {
       return { success: false, error: "Error occurred during sign-up" };
     }
   };
+
   const ApproveContri = async (id, veri) => {
     try {
-      let verified = 0;
       const okay = await axios.get(`${BASE_URL}/Contributor/${id}.json`);
       const obj = okay.data;
-      console.log(obj);
       const response = await axios.put(`${BASE_URL}/Contributor/${id}.json`, {
         Name: obj.Name,
         Phone: obj.Phone,
@@ -388,18 +481,18 @@ const WaterState = ({ children }) => {
       return { success: false, error: "Error occurred during sign-up" };
     }
   };
-  //CONTRIBUTOR
 
-  //RESOURCE
+  // ── Resource ─────────────────────────────────────────────────────────────
+
   const AddResReq = async (details, add, latitude, longitude, cat) => {
     try {
-      let solved = 0;
-      console.log(latitude, longitude)
       const response = await axios.post(`${BASE_URL}/Resource.json`, {
         details,
         add,
-        latitude, longitude, cat,
-        solved,
+        latitude,
+        longitude,
+        cat,
+        solved: 0,
       });
       return response.data;
     } catch (error) {
@@ -407,6 +500,7 @@ const WaterState = ({ children }) => {
       return { success: false, error: "Error occurred during sign-up" };
     }
   };
+
   const GetResReq = async (cat) => {
     try {
       const response = await axios.get(`${BASE_URL}/Resource.json`);
@@ -420,8 +514,8 @@ const WaterState = ({ children }) => {
             latitude: response.data[i].latitude,
             longitude: response.data[i].longitude,
             cat: response.data[i].cat,
-            solved: response.data[i].solved
-          })
+            solved: response.data[i].solved,
+          });
         }
       }
       return arr;
@@ -429,7 +523,8 @@ const WaterState = ({ children }) => {
       console.error("Error during add-up:", error);
       return { success: false, error: "Error occurred during sign-up" };
     }
-  }
+  };
+
   const ApproveReq = async (id, veri) => {
     try {
       const response = await axios.get(`${BASE_URL}/Resource/${id}.json`);
@@ -439,16 +534,17 @@ const WaterState = ({ children }) => {
         latitude: response.data.latitude,
         longitude: response.data.longitude,
         cat: response.data.cat,
-        solved: veri
+        solved: veri,
       });
-      console.log('ok');
       return okay.data;
     } catch (error) {
       console.error("Error during add-up:", error);
       return { success: false, error: "Error occurred during sign-up" };
     }
   };
-  //RESOURCE
+
+  // ── Context value ─────────────────────────────────────────────────────────
+
   return (
     <Context.Provider
       value={{
@@ -463,6 +559,7 @@ const WaterState = ({ children }) => {
         setstate,
         signUp,
         login,
+        checkUserExists,
         AddAnn,
         getAnn,
         SOS,
@@ -475,12 +572,17 @@ const WaterState = ({ children }) => {
         AddContri,
         getContris,
         ApproveContri,
-        AddResReq, GetResReq, ApproveReq,
-        createPost, getPosts, upvotePost
+        AddResReq,
+        GetResReq,
+        ApproveReq,
+        createPost,
+        getPosts,
+        upvotePost,
       }}
     >
       {children}
     </Context.Provider>
   );
 };
+
 export default WaterState;
