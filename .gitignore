@@ -1,0 +1,17 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Models
+*.pkl
+
+# Output files
+*.csv
+!flood_prediction_demo.csv
+
+# Environment
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
