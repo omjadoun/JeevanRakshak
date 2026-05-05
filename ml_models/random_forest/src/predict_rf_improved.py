@@ -58,16 +58,14 @@ proba = flood_model.predict_proba(X)[0]
 classes = le_target.classes_
 prob_dict = dict(zip(classes, proba))
 
-high_prob = prob_dict.get("High", 0)
-
 
 # =========================
-# 5. DECISION LOGIC (TEAMMATE STYLE)
+# 5. DECISION LOGIC
 # =========================
 
-if high_prob >= 0.65:
+if risk_label == "High":
     decision = "HIGH RISK - Evacuate"
-elif high_prob >= 0.40:
+elif risk_label == "Moderate":
     decision = "MEDIUM RISK - Prepare"
 else:
     decision = "LOW RISK - Monitor"
